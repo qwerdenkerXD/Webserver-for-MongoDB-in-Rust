@@ -1,6 +1,7 @@
 use actix_web::{get, post, delete, put, web, App, HttpResponse, HttpServer};
-use mongodb::{Client, Database, Collection, options::{ClientOptions, ResolverConfig, FindOneOptions}, bson::{doc, Bson, from_bson, oid::ObjectId}};
+use mongodb::{Client, Database, Collection, options::{ClientOptions, ResolverConfig}, bson::{doc, Bson, from_bson, oid::ObjectId}};
 use serde::{Serialize, Deserialize};
+use futures_util::TryStreamExt;  // necessary to get Vector from mongodb::Cursor
 
 #[actix_web::main]
 async fn main() {
@@ -20,6 +21,7 @@ struct City {
     country: f32
 }
 
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Country {
     id: f32,
@@ -27,6 +29,7 @@ struct Country {
     is_democratic: bool,
     population: f32,
     capital: f32,
+    #[serde(default)] /// not every country has the rivers-field in database -> added with empty Vector
     rivers: Vec<f32>
 }
 
@@ -44,8 +47,8 @@ async fn hello() -> HttpResponse {
     HttpResponse::Ok().body("Hello")
 }
 
-#[get("/cities/{id}")]
-async fn get_cities(path: web::Path<u32>) -> HttpResponse {
+#[get("/city/{id}")] // singular because /cities/{id} matches on /cities
+async fn get_city(path: web::Path<u32>) -> HttpResponse {
     let city_id = path.into_inner();
 
     // connect to mongo and get database
@@ -64,12 +67,35 @@ async fn get_cities(path: web::Path<u32>) -> HttpResponse {
             None => return HttpResponse::NotFound().body(format!("No city with id {city_id} found")),
         }
     } else {
-        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types in serialization");
+        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization");
     }
 }
 
-#[get("/countries/{id}")]
-async fn get_countries(path: web::Path<u32>) -> HttpResponse {
+#[get("/cities")]
+async fn get_cities() -> HttpResponse {
+    // connect to mongo and get database
+    let db = match connect_to_mongo().await{
+        Ok(db) => db,
+        Err(_) => {
+            println!("Could not connect to mongodb");
+            return HttpResponse::InternalServerError().body("Internal Server Error: Database not accessible")
+        }
+    };
+
+    let cities: Collection<City> = db.collection("cities");
+    if let Ok(city_cursor) = cities.find(None, None).await {
+        let found_cities: Result<Vec<City>, _> = city_cursor.try_collect().await;
+        match found_cities {
+            Ok(f) => return HttpResponse::Ok().json(f),
+            Err(_) => return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization"),
+        }
+    } else {
+        return HttpResponse::InternalServerError().body("Internal Server Error: Secret room found");
+    }
+}
+
+#[get("/country/{id}")]
+async fn get_country(path: web::Path<u32>) -> HttpResponse {
     let country_id = path.into_inner();
 
     // connect to mongo and get database
@@ -88,12 +114,35 @@ async fn get_countries(path: web::Path<u32>) -> HttpResponse {
             None => return HttpResponse::NotFound().body(format!("No country with id {country_id} found")),
         }
     } else {
-        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types in serialization");
+        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization");
     }
 }
 
-#[get("/rivers/{id}")]
-async fn get_rivers(path: web::Path<u32>) -> HttpResponse {
+#[get("/countries")]
+async fn get_countries() -> HttpResponse {
+    // connect to mongo and get database
+    let db = match connect_to_mongo().await{
+        Ok(db) => db,
+        Err(_) => {
+            println!("Could not connect to mongodb");
+            return HttpResponse::InternalServerError().body("Internal Server Error: Database not accessible")
+        }
+    };
+
+    let countries: Collection<Country> = db.collection("countries");
+    if let Ok(country_cursor) = countries.find(None, None).await {
+        let found_countries: Result<Vec<Country>, _> = country_cursor.try_collect().await;
+        match found_countries {
+            Ok(f) => return HttpResponse::Ok().json(f),
+            Err(err) => {println!("{}", err); return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization")},
+        }
+    } else {
+        return HttpResponse::InternalServerError().body("Internal Server Error: Secret room found");
+    }
+}
+
+#[get("/river/{id}")]
+async fn get_river(path: web::Path<u32>) -> HttpResponse {
     let river_id = path.into_inner();
 
     // connect to mongo and get database
@@ -112,7 +161,30 @@ async fn get_rivers(path: web::Path<u32>) -> HttpResponse {
             None => return HttpResponse::NotFound().body(format!("No river with id {river_id} found")),
         }
     } else {
-        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types in serialization");
+        return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization");
+    }
+}
+
+#[get("/rivers")]
+async fn get_rivers() -> HttpResponse {
+    // connect to mongo and get database
+    let db = match connect_to_mongo().await{
+        Ok(db) => db,
+        Err(_) => {
+            println!("Could not connect to mongodb");
+            return HttpResponse::InternalServerError().body("Internal Server Error: Database not accessible")
+        }
+    };
+
+    let rivers: Collection<River> = db.collection("rivers");
+    if let Ok(river_cursor) = rivers.find(None, None).await {
+        let found_rivers: Result<Vec<River>, _> = river_cursor.try_collect().await;
+        match found_rivers {
+            Ok(f) => return HttpResponse::Ok().json(f),
+            Err(_) => return HttpResponse::InternalServerError().body("Internal Server Error: Incorrect data types or missing fields in serialization"),
+        }
+    } else {
+        return HttpResponse::InternalServerError().body("Internal Server Error: Secret room found");
     }
 }
 
@@ -139,12 +211,15 @@ async fn put_cities() -> HttpResponse {
 async fn start_server_on(port: i32) -> Result<(), std::io::Error> {
     let server = HttpServer::new(|| 
         App::new().service(hello)
+                  .service(get_city)
                   .service(get_cities)
                   .service(post_cities)
                   .service(delete_cities)
+                  .service(get_country)
                   .service(get_countries)
                   // .service(post_countries)
                   // .service(delete_countries)
+                  .service(get_river)
                   .service(get_rivers)
                   // .service(post_rivers)
                   // .service(delete_rivers)
