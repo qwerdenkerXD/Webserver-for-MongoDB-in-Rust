@@ -5,13 +5,28 @@ use futures_util::TryStreamExt;  // necessary to get Vector from mongodb::Cursor
 
 #[actix_web::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
     // start webserver
-    if let Err(err) = start_server_on(3000).await {
-        println!("{}", err);
+    let std_port = 3000;
+    if args.len() > 1 {  // first arg is file path
+        let port: u32 = match args[1].parse() {
+            Ok(p) => p,
+            Err(_) => std_port,
+        };
+        println!("Trying port: {port}");
+        if let Err(err) = start_server_on(port).await {
+            println!("{}", err);
+        }
+    } else {
+        println!("Trying standard port: {std_port}");
+        if let Err(err) = start_server_on(std_port).await {
+            println!("{}", err);
+        }
     }
 }
 
-async fn start_server_on(port: i32) -> Result<(), std::io::Error> {
+async fn start_server_on(port: u32) -> Result<(), std::io::Error> {
     let server = HttpServer::new(|| 
         App::new().service(hello)
 
