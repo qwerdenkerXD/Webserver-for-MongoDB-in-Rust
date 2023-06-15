@@ -1,51 +1,16 @@
-use std::{
-    fs,
-    io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream},
-};
+use web_server;
+use std::panic::catch_unwind;
 
 fn main() {
-    let ip = "127.0.0.1:3000";
-    let listener = match TcpListener::bind(ip){
-        Ok(lis) => lis,
-        Err(_) => {println!("Connection to {ip} failed"); return}
-    };
-    println!("Connection established!");
-
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        handle_connection(stream);
-    }
+    let port = 1234;
+    connect(port)
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let mut buf_reader = BufReader::new(&mut stream).lines();
-    let request_line = buf_reader.next().unwrap().unwrap();  // sth. like "GET /cities HTTP/1.1"
-
-    let mut request_line = request_line.split(" ");
-    let req_method = request_line.next().unwrap();
-    let uri = request_line.next().unwrap();
-    let http_version = request_line.next().unwrap();
-
-    let contents = match req_method {
-        "GET" => "GET",
-        "POST" => "POST",
-        &_ => "GET"
-    };
-    let status_line = format!("{http_version} 200 OK");
-    // let (status_line, filename) = if request_line == "GET / HTTP/1.1" {
-    //     ("HTTP/1.1 200 OK", "hello.html")
-    // } else {
-    //     ("HTTP/1.1 404 NOT FOUND", "404.html")
-    // };
-
-    // let contents = fs::read_to_string(filename).unwrap();
-    let length = contents.len();
-
-    let response =
-        format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-
-    stream.write_all(response.as_bytes()).unwrap();
+fn connect(port: i32) {
+    web_server::new()
+        .get("/", Box::new(|request: web_server::Request, mut response: web_server::Response|{
+            "Hello World!".into()
+        }))
+        .launch(port);
 }
 // curl -d '{"rivers":[{"id":12,"length":12,"name":"Wasserhahn"}], "riverFlow":[{"river_id":12,"country_id":1}]}' -H "Content-Type: application/json" http://localhost:3000/
