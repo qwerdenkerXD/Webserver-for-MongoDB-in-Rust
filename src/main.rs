@@ -58,6 +58,7 @@ async fn connect_to_mongo() -> Result<Database, Box<dyn std::error::Error>> {
 
     // create Client
     let client = Client::with_options(options)?;
+    client.list_database_names(None, None).await?;  // will return Err() if not connected
 
     Ok(client.database("test"))
 }
