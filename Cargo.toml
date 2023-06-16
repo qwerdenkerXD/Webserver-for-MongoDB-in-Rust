@@ -1,0 +1,10 @@
+[package]
+name = "rust_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.3.1"
+futures-util = "0.3.28"
+mongodb = "2.5.0"
+serde = "1.0.164"
